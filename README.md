@@ -1,5 +1,5 @@
 # Objective Mapping in N Dimensions
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10558896.svg)](https://doi.org/10.5281/zenodo.10558896) | Contact: perrinwdavidson@gmail.com
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10558896.svg)](https://doi.org/10.5281/zenodo.10558896)
 # About
 Here we present an algorithm for objective mapping in N dimensions in MATLAB. To the source code is in the subdirectory `src/objectiveMapping.m` with the neccessary subroutines to run the function in `src/subroutines/*`. Examples in 1-, 2-, and 3-dimensions are provided in the subdirectory `scripts/*`, which can be run if the `src` subdirectory is added to the MATLAB path.
 # References
