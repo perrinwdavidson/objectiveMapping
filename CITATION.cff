@@ -2,7 +2,7 @@ cff-version: 0.0.1
 message: "If you use this software, please cite it as below."
 authors:
 - family-names: "Davidson"
-  given-names: "Perrin"
+  given-names: "Perrin W."
   orcid: "https://orcid.org/0000-0003-2853-3266"
 title: "objectiveMapping: Objective Mapping in N Dimensions"
 version: 0.0.1
