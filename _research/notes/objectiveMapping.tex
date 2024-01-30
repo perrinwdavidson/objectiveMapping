@@ -1,0 +1,290 @@
+% ---------------------------------------------------------
+\documentclass[12pt]{article}
+
+% ---------------------------
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{amstext}
+\usepackage{mathtools}
+\usepackage{latexsym}
+\usepackage{cases}
+\usepackage{comment}
+\usepackage{hyperref}
+\usepackage{sectsty}
+\usepackage{ragged2e}
+\usepackage{titlesec}
+\usepackage[
+        backend=biber,
+        bibencoding=utf8,
+        maxbibnames=99,
+        maxcitenames=2,
+        uniquelist=false,
+        sorting=none,
+        style=nature,
+        giveninits=true,
+]{biblatex}
+\usepackage[
+        body={6.5in, 9.0in},
+        top=1.0in,
+        left=1.0in,
+        no head
+]{geometry}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{bm}
+\usepackage{bbm}
+
+% ---------------------------
+\urlstyle{same}
+\hypersetup{
+    colorlinks=true,    % false: boxed links; true: colored links
+    linkcolor=blue,     % color of internal links
+    citecolor=blue,     % color of links to bibliography
+    filecolor=black,    % color of file links
+    urlcolor=blue       % color of external links
+}
+\setlength{\parindent}{5mm}
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+\footnotesep 1.2em
+\sectionfont{\large}
+\subsectionfont{\normalsize}
+\titlespacing{\section}{0pt}{\parskip}{-0.5em}
+\titlespacing{\subsection}{0pt}{\parskip}{-0.5em}
+\titlespacing{\subsubsection}{0pt}{\parskip}{-0.5em}
+
+% ---------------------------
+\AtEveryBibitem{\clearfield{number}}
+\addbibresource{bibfile.bib}
+
+% ---------------------------------------------------------
+\begin{document}
+
+% ---------------------------
+\parindent 0pt \parskip 1em
+\centerline{\large{\bf{Multi-dimensional Objective Mapping}}}
+\vskip 1em
+\centerline{\sl{P.~W.~Davidson, MIT}}
+
+% ---------------------------
+\section*{Introduction}
+
+The need to optimally estimate smooth fields from sparse data appears across many disciplines in the natural sciences. 
+To meet this need, objective mapping (OM; \cite{bretherton1976, fukumori1991, bindoff1992, wunsch2006}) has been successfully employed.
+Similar to other geostatistical estimation methods such as the many variants of Kriging \cite{webster2007}, these methods are all linked by the Gauss-Markov Theorem.
+Indeed, OM is nearly equivalent to Simple Kriging and differs from Ordinary Kriging in that there is no need to fit a function (e.g., a \textit{semivariogram}) to the data in order to estimate the (co)variance. 
+Instead, such (co)variances are calculated by prescription of a distance-dependent model.
+\par
+Here, we describe an implementation of OM coupled with maximum likelihood estimation (MLE) to produce fields in $N$ dimensions \cite{jack, fenton1999}.
+While our purposes will be with an application to oceanographic data \cite{kenyon2024}, there is nothing to hold one back from employing our algorithm to data sets from other disciplines. 
+This short document is structured as follows: we first cover the theoretical background on which our algorithm is based before discussing the numerical implementation itself.
+
+% ---------------------------
+\section*{Theoretical Background}
+\label{sec:theory}
+
+We proceed by first describing OM through a derivation of minimum variance estimation before then describing how $\textrm{e}-$folding distance scales are calculated using maximum likelihood estimation.
+
+% ------------
+\subsection*{Minimum variance estimation}
+
+We start by assuming that we have a sparse set of noisy data $\bm{y} = \{y\left(\bm{s}_i\right) : i = 1, 2, \ldots, N\}^{\textrm{T}}$, where we assume that $y\left(\bm{s}_i\right) = y_0\left(\bm{s}_i\right) + n\left(\bm{s}_i\right)$ for $y_0$ the ``true'' value of $y$ and $n$ the noisy component at the location $\bm{s}_i$. 
+We can think of these $\bm{y}$ as realizations of the field which we are trying to estimate. 
+To be concrete, let's say that we want to estimate this field at unmeasured locations, which we will denote as $\bm{x} = \{x\left(\bm{r}_{\alpha}\right) : \alpha = 1, 2, \ldots, M\}^{\textrm{T}}$ and for which we seek our best possible estimate, which we will define as $\bm{\tilde{x}}$.
+By ``best'' here we mean the estimate with the minimum variance. To be able to do this, we will first suppose the following prior information about the low-order statistics of $\bm{y}$ and $\bm{x}$, namely that
+\[
+	\langle\bm{y}\rangle = \langle \bm{x}\rangle = 0 \quad \textrm{ and } \quad \langle \bm{x}\bm{x}^{\textrm{T}}\rangle \equiv \bm{R}_{xx},
+\]
+as well as that at the unknown locations, we let
+\[
+	\langle \bm{y}\bm{y}^{\textrm{T}}\rangle \equiv \bm{R}_{yy} \quad \textrm{ and } \quad \langle\bm{x}\bm{y}^{\textrm{T}}\rangle \equiv \bm{R}_{xy}.
+\]
+Note the stationarity of the field assumed here, with the mean of the field implicitly subtracted out.
+Then, we can state our problem as minimizing the diagonal elements of the variance of our estimate, which we write as
+\begin{equation}
+	\underset{\bm{\tilde{x}}}{\textrm{argmin}}\:\bm{P} = \underset{\bm{\tilde{x}}}{\textrm{argmin}}\:\langle\left(\bm{\tilde{x}} - \bm{x}\right)\left(\bm{\tilde{x}} - \bm{x}\right)^{\textrm{T}}\rangle.
+	\label{eq:min_prob}
+\end{equation}
+This individual minimization is distinct from the sum of squares minimization.
+As an initial guess of the minimization solution, we can assume that the solution is linear, i.e., that 
+\begin{equation}
+	\bm{\tilde{x}} = \bm{B}\bm{y}.
+	\label{eq:ansatz}
+\end{equation}
+From here, we show what is often referred to as the Gauss-Markov Theorem, which produces a $\bm{B}$ such that the diagonal elements of $\bm{P}$ are minimized.
+Substituting \eqref{eq:ansatz} into \eqref{eq:min_prob} we get
+\begin{equation}
+	\bm{P} = \bm{B}\bm{R}_{yy}\bm{B}^{\textrm{T}} - \bm{R}_{xy}\bm{B}^{\textrm{T}} - \bm{B}\bm{R}_{xy}^{\textrm{T}} + \bm{R}_{xx}.
+	\label{eq:p_min_1}
+\end{equation}
+By completing the square\footnote{$\bm{ACA}^{\textrm{T}} - \bm{BA}^{\textrm{T}} - \bm{AB}^{\textrm{T}} = \left(\bm{A - \bm{BC}^{-1}}\right)\bm{C}\left(\bm{A - \bm{BC}^{-1}}\right)^{\textrm{T}} - \bm{BCB}^{\textrm{T}}$, which we can derive by additing and subtracting $\bm{BCB}^{\textrm{T}}$ to the LHS and rearranging.}, we can transform \eqref{eq:p_min_1} into
+\begin{equation}
+	\bm{P} = \left(\bm{B} - \bm{R}_{xy}\bm{R}_{yy}^{-1}\right)\bm{R}_{yy}\left(\bm{B} - \bm{R}_{xy}\bm{R}_{yy}^{-1}\right)^{\textrm{T}} - \bm{R}_{xy}\bm{R}_{yy}^{-1}\bm{R}_{xy}^{\textrm{T}} + \bm{R}_{xx}.
+	\label{eq:p_min_2}
+\end{equation}
+So, noting that all three terms in \eqref{eq:p_min_2} are positive definite\footnote{We define a positive-definite matrix $\bm{A}$ as one that for all non-zero real column vectors $\bm{x}$, $\bm{x}^{\textrm{T}}\bm{Ax} > 0$.}, the diagonal entries $\bm{P}$ are minimized\footnote{To see this clearly, write out the case for a $2 \times 2$ matrix.} when 
+\begin{equation}
+	\bm{B} = \bm{R}_{xy}\bm{R}_{yy}^{-1}.
+	\label{eq:b_soln}
+\end{equation}
+Therefore, plugging \eqref{eq:b_soln} into \eqref{eq:ansatz} gives the minimum variance estimate that we sought in the first place, namely
+\begin{equation}
+	\bm{\tilde{x}} = \bm{R}_{xy}\bm{R}_{yy}^{-1}\bm{y},
+\end{equation}
+for which the corresponding variance in the estimate is
+\begin{equation}
+	\bm{P} = \bm{R}_{xx} - \bm{R}_{xy}\bm{R}_{yy}^{-1}\bm{R}_{xy}^{\textrm{T}}.
+	\label{eq:variance}
+\end{equation}
+We finally consider the case when the covariance function $\bm{R}_{xx}$ is not well determined near the locations defined by the $\bm{r}_{\alpha}$---that is, a large constant $H$ has been added to $\bm{R}_{xx}$.
+To allow for this contingency, Appendix A of \cite{bretherton1976} shows that in the limit of $H \to \infty$, an estimated mean $\bm{\overline{y}}$ can be removed from the observations before estimation and added back in after, namely
+\begin{equation}
+	\bm{\tilde{x}} = \bm{R}_{xy}\bm{R}_{yy}^{-1}\left(\bm{y} - \bm{\overline{y}}\right) + \bm{\overline{y}},
+\end{equation}
+where
+\begin{equation}
+	\bm{\overline{y}} = \frac{\sum_{j,i} \bm{R}_{yy}^{-1}\left(\bm{r}_j, \bm{r}_i\right)\bm{y}_i}{\sum_{j,i} \bm{R}_{yy}^{-1}\left(\bm{r}_j, \bm{r}_i\right)}.
+	\label{eq:field}
+\end{equation}
+We principally employ \eqref{eq:field} and \eqref{eq:variance} in our algorithm.
+
+% ------------
+\subsection*{Maximum likelihood estimation}
+\label{sec:mle}
+
+We discuss how we model the three $\bm{R}$ in \hyperref[sec:covariance]{Covariance Matrices}, though it suffices to say for now that we will treat them as a function of a variance $\sigma^{2}$ and an $\textrm{e}-$folding scale $l$, i.e. $\bm{R}\left(\sigma^{2}, l\right)$.
+Many instances of OM will subjectively determine what $l$ is given the data set; 
+to circumvent this, we will employ MLE.
+Following \cite{fenton1999}, we begin by assuming our data are jointly normally distributed---that is that $\bm{y}_i \sim \mathcal{N}\left(\mu, \sigma\right)$.
+We also again assume that our data can be modeled by a stationary random field, letting us define $\bm{\mu} = \mu\bm{1}_{N\times 1}$.
+Here, $\bm{1}_{A\times B}$ is a matrix of ones of the size $A \times B$.
+Defining $\bm{\theta} = \left(\mu, \sigma^{2}, l\right)$, we then have that the likelihood of observing $\bm{y}$ is given by
+\begin{equation}
+    L(\bm{y} \: \lvert \: \bm{\theta}) = \frac{1}{(2\pi)^{N/2}\lvert \bm{R}_{yy}\left(\sigma^{2}, l\right) \rvert^{1/2}} \exp\left[ -\frac{1}{2} (\bm{y} - \bm{\mu})^T \bm{R}_{yy}^{-1}\left(\sigma^{2}, l\right) (\bm{y} - \bm{\mu})\right].
+    \label{eq:llf}
+\end{equation}
+Following the standard statistical procedure of MLE, the maximum of \eqref{eq:llf} is the same as its log as it is strictly nonnegative. 
+This then means that we have an objective function, ignoring constants,
+\begin{equation}
+    \mathcal{L}(\bm{y} \: \lvert \: \bm{\theta}) = -\frac{N}{2}\log\sigma^2 - \frac{1}{2}\log\lvert\bm{R}_{yy}\rvert - \frac{(\bm{y} - \bm{\mu})^T \bm{R}_{yy}^{-1} (\bm{y} - \bm{\mu})}{2\sigma^2}.
+    \label{eq:logllf}
+\end{equation}
+Taking the partial derivative of \eqref{eq:logllf} with respect to the mean, we find that the MLE of the mean is
+\begin{equation}
+    \tilde{\mu} = \frac{\bm{1}_{1\times N}\bm{R}_{yy}^{-1}\bm{y}}{\bm{1}_{1\times N}\bm{R}_{yy}^{-1}\bm{1}_{N\times 1}}.
+    \label{eq:muinit}
+\end{equation}
+Given \eqref{eq:muinit}, let's assume that $\bm{R}_{yy}$ is nonsingular and that therefore there are some vector solutions of the form 
+\begin{equation}
+    \bm{R}_{yy}\bm{A} = \bm{y} \quad \text{and} \quad \bm{R}_{yy}\bm{B} = \bm{1}_{N\times 1},
+    \label{eq:abs}
+\end{equation}
+which transforms \eqref{eq:muinit} into
+\begin{equation}
+    \tilde{\mu} = \frac{\bm{1}_{1\times N}\bm{A}}{\bm{1}_{1\times N}\bm{B}}.
+    \label{eq:mu}
+\end{equation}
+Now, we determine the maximum likelihood estimator of the variance from \eqref{eq:logllf} as
+\begin{equation}
+    \tilde{\sigma}^{2} = \frac{1}{N}(\bm{y} - \tilde{\mu}\bm{1}_{N\times 1})\bm{A}. 
+    \label{eq:sigma}
+\end{equation}
+Finally, plugging in \eqref{eq:mu} and \eqref{eq:sigma} into \eqref{eq:logllf} and dropping the constant $N/2$ which comes from the simplification of the third term, we get that the final likelihood function of $\bm{y}$ given the parameters $\bm{\theta}$ is 
+\begin{equation}
+    \mathcal{L}(\bm{y} \: \lvert \: \bm{\theta}) = -\frac{N}{2}\log\tilde{\sigma}^{2} - \frac{1}{2}\log\lvert\bm{R}_{yy}\rvert.
+    \label{eq:llffinal}
+\end{equation}
+Remember that our estimates of the mean and the variance are really functions of $\bm{R}_{yy}$, which in turn is a function of the length scale $l$. 
+Therefore, to find the optimal scale $\tilde{l}$, we need to maximize \eqref{eq:llffinal} or minimize its negative, namely
+\begin{equation}
+	\underset{l}{\textrm{argmin}}\:\left[- \mathcal{L}\left(\bm{y} \: \lvert \: \mu, \sigma^{2}, l\right)\right].
+	\label{eq:llf_min}
+\end{equation}
+We discuss this procedure in \hyperref[sec:minimization]{Minimization}.
+
+% ---------------------------
+\section*{Algorithm Implementation}
+
+We now consider the practical applications of \hyperref[sec:theory]{Theoretical Background} by first defining the covariance matrices used in the algorithm before discussing some considerations for the MLE of scales.
+In both cases, we normalize the data following
+\begin{equation}
+	\overline{y\left(\bm{r}_i\right)} = \frac{y\left(\bm{r}_i\right) - \langle\bm{y}\rangle}{\langle \bm{y}\bm{y}^{\textrm{T}} \rangle}.
+\end{equation}
+Note that this empirically normalizes the data, as is assumed in \hyperref[sec:mle]{Maximum likelihood estimation}. 
+This operation is reversed after the estimation procedures.
+
+% ------------
+\subsection*{Covariance Matrices}
+\label{sec:covariance}
+
+Defining these matrices is somewhat of an ``art'', so we describe our parameterizations here. 
+We first specify the data-data covariance matrix, $\bm{R}_{yy}$, as
+\[
+	\bm{R}_{yy} = \left(\sigma^{2} + \mathbbm{1}_{N\times N}\bm{\epsilon}\right) \cdot \exp\left[-\left(\frac{d\left(\bm{r}_i, \bm{r}_j\right)}{l}\right)^{2}\right] + \mathbbm{1}_{N\times N}\sigma^{2}_n,
+\]
+where we let $\sigma^2$ be the sample variance at of $\bm{y}$ and  $\bm{\epsilon} = \{ \epsilon^{2}\left(r_{i}\right) : i = 1, 2, \ldots, N\}^{\textrm{T}}$ be the vector of individual variances of measurement error for each sample location \cite{christensen2011, webster2007}.
+The $\cdot$ represents element-wise multiplication, and $d\left(\cdot\right)$ is the distance metric we impose on the field; 
+in many cases, this is the euclidean distance, including when the small-angle approximation can be made on a sphere. 
+Also, $\mathbbm{1}_{A\times A}$ is the identity matrix of the size $A \times A$.
+Additionally, $\sigma^{2}_n$ is the noise variance which we define as \cite{bindoff1992}
+\[
+	\sigma^{2}_n = \frac{1}{2K}\sum_{k=1}^K d_{<\tilde{l}}\left(\bm{r}_i, \bm{r}_j\right)_k^{2},
+\]
+where the sum is over $K$-many data pairs of $d_{<\tilde{l}}$ indexed by $i, j$ that have a distance less than the scale estimated by MLE, $\tilde{l}$.
+\par
+Next, we define the model-data covariance matrix, $\bm{R}_{xy}$, as
+\[
+	\bm{R}_{xy} = \left(\sigma^{2} + \bm{\epsilon}_{M \times N}\right) \cdot \exp\left[-\left(\frac{d\left(\bm{s}_{\alpha}, \bm{r}_i\right)}{l}\right)^{2}\right],
+\]
+where we have $\bm{\epsilon}_{M \times N}$ the matrix of variances corresponding to the appropriate datum in the data-model pair and we assume that the model variance is equivalent to the data variance, $\sigma^{2}.$
+\par
+Lastly, we define the model-model covariance matrix, $\bm{R}_{xx}$, as \cite{webster2007}
+\[
+	\bm{R}_{xx} = \begin{cases}
+		      		\sigma^{2} - \left(\bm{R}_{xy}\bm{R}_{yy}^{-1}\right)^{2}\epsilon & \textrm{ 1 point,} \\
+				\mathbbm{1}_{M \times M}\left[\bm{\sigma}^{2} - \left(\bm{R}_{xy}\bm{R}_{yy}^{-1}\right)^{2}\bm{\epsilon}\right] \cdot \exp\left[-\left(\frac{d\left(\bm{s}_{\alpha}, \bm{s}_{\beta}\right)}{l}\right)^{2}\right] & M\textrm{-many points}.
+		      \end{cases}
+\]
+Note here that we have two cases here. 
+The first is when we are only estimating one point, such is done in Kriging, where we assume the variance of the data is the same as estimate, before removing the propagated measurement variance from the variance of the estimate.
+When there are $M$-many location in $\bm{x}$, then we estimate the variance of these points, before again removing the propagated measurement variance.
+
+% ------------
+\subsection*{Minimization}
+\label{sec:minimization}
+
+In order to maximize \eqref{eq:llffinal}, we minimize its negative as given in \eqref{eq:llf_min}.
+To do this, we employ the following procedure:
+\begin{enumerate}
+	\item initialize $\tilde{l}$ and set appropriate bounds on $\tilde{l}$ over which to search for the minimum
+	\begin{enumerate}
+		\item compute $\mathbb{R}_{yy}(\sigma^{2}, \tilde{l})$ \label{step:start}
+		\item calculate $\bm{A}$ and $\bm{B}$ in \eqref{eq:abs}
+		\item estimate $\tilde{\mu}$ and $\tilde{\sigma}^{2}$ in \eqref{eq:mu} and \eqref{eq:sigma}
+		\item calculate the $\textrm{log}$ likelihood in \eqref{eq:llffinal} \label{step:end}
+	\end{enumerate}
+	\item repeat steps \ref{step:start} to \ref{step:end} until the minimum of the negative of \eqref{eq:llffinal} is found
+\end{enumerate}
+We note here that we let the data variance discussed in \hyperref[sec:covariance]{Covariance Matrices}, $\sigma^{2}$, be the MLE estimate, $\tilde{\sigma}^{2}$ of \eqref{eq:sigma}, for the optimized $\tilde{l}$.
+\par
+To accomplish this procedure, we minimize the negative $\log$ likelihood using Brent Minimization. 
+Brent Minimization is the combined method using Successive Parabolic Interpolation when possible and Golden Search method when necessary. 
+This method was proposed by \cite{brent1973}. 
+In general, it is a bracketing method, meaning that there must be two initial values which must bracket the minima (maxima) that we are trying to estimate. 
+Essentially, we are trying to optimize a function $f: \mathbb{R} \rightarrow \mathbb{R}$ which we assume is at least $C^1$ on an interval $[a, b] = I \in \mathbb{R}$. 
+Then, the problem becomes finding an interior point $x^\ast \in (a, b)$ such that 
+\begin{equation*}
+    f'(x^\ast) = 0.
+\end{equation*}
+
+% ---------------------------
+\clearpage
+\printbibliography
+
+
+
+% ---------------------------------------------------------
+\end{document}
